@@ -7,7 +7,8 @@
  * NOTE: This resets on proxy restart.
  */
 
-const nextNonceByEvmAddr = new Map(); // evmAddrLower -> BigInt next nonce
+// TRON doesn't provide eth_getTransactionCount; we keep a proxy-local nonce counter.
+const nextNonceByEvmAddr = new Map(); // evmAddrLower -> BigInt
 
 function getNextNonce(addrLower) {
   return nextNonceByEvmAddr.get(addrLower) ?? 0n;
@@ -19,47 +20,4 @@ function bumpNonce(addrLower, seenNonce) {
   if (candidate > current) nextNonceByEvmAddr.set(addrLower, candidate);
 }
 
-// ethHash -> record
-// record = { ethHash, tronTxid, expectedCreateLower, tronContractHex41, codeHex }
-const txByEthHash = new Map();
-
-// expectedCreateLower -> ethHash
-const ethHashByExpected = new Map();
-
-// expectedCreateLower -> codeHex (0x...)
-const codeByExpected = new Map();
-
-function putTx(ethHash, record) {
-  txByEthHash.set(ethHash, record);
-}
-
-function getTx(ethHash) {
-  return txByEthHash.get(ethHash) || null;
-}
-
-function setExpectedMapping(expectedLower, ethHash) {
-  ethHashByExpected.set(expectedLower, ethHash);
-}
-
-function getEthHashByExpected(expectedLower) {
-  return ethHashByExpected.get(expectedLower) || null;
-}
-
-function setCodeForExpected(expectedLower, codeHex) {
-  codeByExpected.set(expectedLower, codeHex);
-}
-
-function getCodeForExpected(expectedLower) {
-  return codeByExpected.get(expectedLower) || null;
-}
-
-module.exports = {
-  getNextNonce,
-  bumpNonce,
-  putTx,
-  getTx,
-  setExpectedMapping,
-  getEthHashByExpected,
-  setCodeForExpected,
-  getCodeForExpected,
-};
+module.exports = { getNextNonce, bumpNonce };

@@ -6,7 +6,6 @@ function makeUpstreamService({ upstreamJsonRpcUrl }) {
     const r = await axios.post(upstreamJsonRpcUrl, payload, { timeout: 20_000 });
     return r.data;
   }
-
   return { forward };
 }
 

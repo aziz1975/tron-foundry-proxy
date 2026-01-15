@@ -9,7 +9,6 @@ function makeRpcRouter({ ethHandlers, upstreamService }) {
     }
 
     try {
-      // Handle methods we implement
       if (method === "eth_getTransactionCount") {
         return res.json(rpcResult(id, await ethHandlers.eth_getTransactionCount(params)));
       }
@@ -32,7 +31,7 @@ function makeRpcRouter({ ethHandlers, upstreamService }) {
         return res.json(rpcResult(id, await ethHandlers.eth_getTransactionByHash(params)));
       }
 
-      // Forward everything else to Chainstack /jsonrpc
+      // forward everything else
       const forwarded = await upstreamService.forward(method, params, id);
       return res.json(forwarded);
     } catch (e) {
