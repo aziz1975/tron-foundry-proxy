@@ -4,7 +4,7 @@ const ethers = ethersPkg.ethers ?? ethersPkg;
 const { toQuantityHex } = require("../utils/hex");
 
 function makeEthHandlers({ store, tronService, upstreamService }) {
-  const { proxySignerEvm } = tronService;
+  const { proxySignerEvm, tronWeb } = tronService;
 
   async function eth_getTransactionCount(params) {
     const addr = (params?.[0] || "").toLowerCase();
@@ -16,17 +16,51 @@ function makeEthHandlers({ store, tronService, upstreamService }) {
   }
 
   async function eth_gasPrice() {
-    return "0x2540be400"; // 10 gwei
+    return "0x2540be400";
   }
 
-  /**
-   * IMPORTANT: we return TRON txid as the "tx hash" to Forge:
-   *   txHash = 0x + tronTxid
-   *
-   * Then Forge will call eth_getTransactionReceipt(txHash),
-   * and we forward that to Chainstack /jsonrpc which DOES support it
-   * and returns receipt.contractAddress -> so Forge won't throw "contract was not deployed".
-   */
+  function getConstructorAbi(abi) {
+    if (!Array.isArray(abi)) return null;
+    return abi.find((x) => x && x.type === "constructor") || null;
+  }
+
+  function normalizeValue(value, abiInput) {
+    const t = String(abiInput.type);
+
+    if (t === "address") {
+      const evm = String(value).toLowerCase();
+      const tronHex = "41" + evm.slice(2);
+      return tronWeb.address.fromHex(tronHex);
+    }
+
+    if (t.startsWith("uint") || t.startsWith("int")) {
+      if (typeof value === "bigint") return value.toString();
+      return String(value);
+    }
+
+    if (t === "string") return String(value);
+    if (t === "bool") return Boolean(value);
+
+    if (t.startsWith("bytes")) {
+      if (typeof value === "string") return value;
+      return "0x" + Buffer.from(value).toString("hex");
+    }
+
+    if (t.endsWith("]")) {
+      const baseType = t.replace(/\[[^\]]*\]$/, "");
+      const baseInput = { ...abiInput, type: baseType };
+      return Array.from(value).map((v) => normalizeValue(v, baseInput));
+    }
+
+    if (t.startsWith("tuple")) {
+      const comps = abiInput.components || [];
+      const arr = Array.from(value);
+      return comps.map((c, i) => normalizeValue(arr[i], c));
+    }
+
+    return value;
+  }
+
   async function eth_sendRawTransaction(params) {
     const rawTxHex = params?.[0];
     if (typeof rawTxHex !== "string" || !rawTxHex.startsWith("0x")) {
@@ -40,12 +74,8 @@ function makeEthHandlers({ store, tronService, upstreamService }) {
 
     const senderLower = tx.from.toLowerCase();
 
-    // Safety: proxy signer must match Forge sender
     if (proxySignerEvm && senderLower !== proxySignerEvm.toLowerCase()) {
-      throw new Error(
-        `Sender mismatch. RawTx sender=${senderLower} but proxy key maps to ${proxySignerEvm}. ` +
-        `Use the same private key in forge and proxy.`
-      );
+      throw new Error(`Sender mismatch. RawTx sender=${senderLower} but proxy key maps to ${proxySignerEvm}.`);
     }
 
     store.bumpNonce(senderLower, BigInt(tx.nonce ?? 0));
@@ -58,16 +88,41 @@ function makeEthHandlers({ store, tronService, upstreamService }) {
     const isCreate = tx.to == null;
 
     let result;
+
     if (isCreate) {
-      const bytecodeNo0x = dataHex.startsWith("0x") ? dataHex.slice(2) : dataHex;
-      result = await tronService.deployFromBytecode(bytecodeNo0x);
+      const abi = tronService.getAbi();
+      const ctor = getConstructorAbi(abi);
+      const creationNo0x = tronService.getCreationBytecode();
+
+      const fullNo0x = dataHex.slice(2);
+
+      if (!creationNo0x || !fullNo0x.startsWith(creationNo0x)) {
+        throw new Error(
+          "Cannot split constructor args from tx.data. " +
+            "Make sure FOUNDRY_ARTIFACT_PATH points to the correct contract artifact and that the contract was recompiled."
+        );
+      }
+
+      const argsNo0x = fullNo0x.slice(creationNo0x.length);
+
+      let ctorParams = [];
+      if (ctor && Array.isArray(ctor.inputs) && ctor.inputs.length > 0) {
+        const types = ctor.inputs.map((inp) => ethers.ParamType.from(inp).format("full"));
+        const decoded = ethers.AbiCoder.defaultAbiCoder().decode(types, "0x" + argsNo0x);
+        ctorParams = ctor.inputs.map((inp, i) => normalizeValue(decoded[i], inp));
+      }
+
+      result = await tronService.deployWithAbiAndParams({
+        bytecodeNo0x: creationNo0x,
+        constructorAbi: ctor,
+        constructorParams: ctorParams,
+      });
     } else {
       const toEvmLower = tx.to.toLowerCase();
-      const dataNo0x = dataHex.slice(2);
       result = await tronService.triggerSmartContract({
         contractEvm0x: toEvmLower,
         ownerEvm0x: senderLower,
-        dataHexNo0x: dataNo0x,
+        dataHexNo0x: dataHex.slice(2),
       });
     }
 
@@ -75,15 +130,9 @@ function makeEthHandlers({ store, tronService, upstreamService }) {
       throw new Error("TRON broadcast failed: " + JSON.stringify(result));
     }
 
-    // Return TRON txid as the tx hash to Forge
-    const txHash = "0x" + String(result.txid);
-    return txHash;
+    return "0x" + String(result.txid);
   }
 
-  /**
-   * Just forward to Chainstack TRON /jsonrpc.
-   * You confirmed it returns contractAddress for deployments.
-   */
   async function eth_getTransactionReceipt(params) {
     const txHash = params?.[0];
     const forwarded = await upstreamService.forward("eth_getTransactionReceipt", [txHash], 1);

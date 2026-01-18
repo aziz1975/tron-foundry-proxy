@@ -10,36 +10,48 @@ const { makeTronService } = require("./services/tronService");
 const { makeEthHandlers } = require("./handlers/ethHandlers");
 const { makeRpcRouter } = require("./handlers/rpcRouter");
 
-// Artifact cache (ABI + contract name) with auto-reload by mtime
 let artifactCache = {
   abi: [],
   contractName: "Contract",
+  creationBytecodeNo0x: "",
   mtimeMs: 0,
 };
 
 function loadArtifact() {
   if (!config.FOUNDRY_ARTIFACT_PATH) return artifactCache;
 
-  const artifactPath = path.resolve(config.FOUNDRY_ARTIFACT_PATH);
-  if (!fs.existsSync(artifactPath)) return artifactCache;
+  const p = path.resolve(config.FOUNDRY_ARTIFACT_PATH);
+  if (!fs.existsSync(p)) return artifactCache;
 
-  const stat = fs.statSync(artifactPath);
-  if (stat.mtimeMs === artifactCache.mtimeMs && artifactCache.abi.length) {
+  const stat = fs.statSync(p);
+  if (stat.mtimeMs === artifactCache.mtimeMs && artifactCache.creationBytecodeNo0x) {
     return artifactCache;
   }
 
-  const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
+  const artifact = JSON.parse(fs.readFileSync(p, "utf8"));
 
-  // Derive name from file: out/Counter.sol/Counter.json -> "Counter"
-  const derivedName = path.basename(artifactPath, ".json");
+  const contractName = path.basename(p, ".json");
+  const abi = artifact.abi || [];
+
+  // Foundry artifacts usually keep creation bytecode here:
+  // artifact.bytecode.object (string) OR artifact.bytecode (string)
+  const bytecodeObj =
+    (artifact.bytecode && artifact.bytecode.object) ||
+    artifact.bytecode ||
+    "";
+
+  const creationBytecodeNo0x = String(bytecodeObj).startsWith("0x")
+    ? String(bytecodeObj).slice(2)
+    : String(bytecodeObj);
 
   artifactCache = {
-    abi: artifact.abi || [],
-    contractName: derivedName || "Contract",
+    abi,
+    contractName: contractName || "Contract",
+    creationBytecodeNo0x: creationBytecodeNo0x || "",
     mtimeMs: stat.mtimeMs,
   };
 
-  console.log("Loaded artifact from:", artifactPath);
+  console.log("Loaded artifact:", p);
   console.log("Contract name:", artifactCache.contractName);
 
   return artifactCache;
@@ -53,12 +65,13 @@ function getContractName() {
   return loadArtifact().contractName;
 }
 
-// Initial load (optional)
+function getCreationBytecodeNo0x() {
+  return loadArtifact().creationBytecodeNo0x;
+}
+
 loadArtifact();
 
-const upstreamService = makeUpstreamService({
-  upstreamJsonRpcUrl: config.UPSTREAM_JSONRPC,
-});
+const upstreamService = makeUpstreamService({ upstreamJsonRpcUrl: config.UPSTREAM_JSONRPC });
 
 const tronService = makeTronService({
   tronNodeBase: config.TRON_NODE_BASE,
@@ -67,7 +80,8 @@ const tronService = makeTronService({
   originEnergyLimit: config.ORIGIN_ENERGY_LIMIT,
   userFeePercentage: config.USER_FEE_PERCENTAGE,
   getDeployAbi,
-  getContractName, 
+  getContractName,
+  getCreationBytecodeNo0x,
 });
 
 console.log("Proxy signer (EVM 0x):", tronService.proxySignerEvm);

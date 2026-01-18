@@ -9,6 +9,7 @@ function makeTronService({
   userFeePercentage,
   getDeployAbi,
   getContractName,
+  getCreationBytecodeNo0x,
 }) {
   const tronWeb = new TronWeb({
     fullHost: tronNodeBase,
@@ -24,24 +25,44 @@ function makeTronService({
     return r === "SUCCESS" || r === "SUCESS";
   }
 
-  async function deployFromBytecode(bytecodeHexNo0x) {
-    const abi = typeof getDeployAbi === "function" ? getDeployAbi() : [];
-    const name =
-      typeof getContractName === "function" ? getContractName() : "Contract";
+  function getAbi() {
+    return typeof getDeployAbi === "function" ? getDeployAbi() : [];
+  }
 
-    const unsigned = await tronWeb.transactionBuilder.createSmartContract(
-      {
-        abi: abi || [],
-        bytecode: bytecodeHexNo0x,
-        feeLimit: feeLimitSun,
-        callValue: 0,
-        userFeePercentage,
-        originEnergyLimit,
-        name, // matches the artifact contract name
-      },
-      proxySignerBase58
-    );
+  function getName() {
+    return typeof getContractName === "function" ? getContractName() : "Contract";
+  }
 
+  function getCreationBytecode() {
+    return typeof getCreationBytecodeNo0x === "function" ? getCreationBytecodeNo0x() : "";
+  }
+
+  async function deployWithAbiAndParams({ bytecodeNo0x, constructorAbi, constructorParams }) {
+    const abi = getAbi();
+    const name = getName();
+
+    const hasTuple = Array.isArray(constructorAbi?.inputs) && constructorAbi.inputs.some((i) => String(i.type).includes("tuple"));
+
+    const options = {
+      abi,
+      bytecode: bytecodeNo0x,
+      feeLimit: feeLimitSun,
+      callValue: 0,
+      userFeePercentage,
+      originEnergyLimit,
+      name,
+    };
+
+    if (constructorParams && constructorParams.length > 0) {
+      if (hasTuple) {
+        options.funcABIV2 = constructorAbi;
+        options.parametersV2 = constructorParams;
+      } else {
+        options.parameters = constructorParams;
+      }
+    }
+
+    const unsigned = await tronWeb.transactionBuilder.createSmartContract(options, proxySignerBase58);
     const signed = await tronWeb.trx.sign(unsigned);
     return tronWeb.trx.sendRawTransaction(signed);
   }
@@ -69,12 +90,7 @@ function makeTronService({
     return "0x";
   }
 
-  async function triggerSmartContract({
-    contractEvm0x,
-    ownerEvm0x,
-    dataHexNo0x,
-    feeLimitSunOverride,
-  }) {
+  async function triggerSmartContract({ contractEvm0x, ownerEvm0x, dataHexNo0x, feeLimitSunOverride }) {
     const contractHex41 = "41" + contractEvm0x.slice(2).toLowerCase();
     const ownerHex41 = "41" + ownerEvm0x.slice(2).toLowerCase();
 
@@ -102,7 +118,9 @@ function makeTronService({
     proxySignerHex,
     proxySignerEvm,
     tronSuccess,
-    deployFromBytecode,
+    getAbi,
+    getCreationBytecode,
+    deployWithAbiAndParams,
     triggerSmartContract,
     getTransactionInfo,
     getContractBytecodeByHex41,
