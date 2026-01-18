@@ -10,45 +10,55 @@ const { makeTronService } = require("./services/tronService");
 const { makeEthHandlers } = require("./handlers/ethHandlers");
 const { makeRpcRouter } = require("./handlers/rpcRouter");
 
-// ---- ABI loader with auto-reload ----
-let abiCache = [];
-let abiCachePath = null;
-let abiCacheMtimeMs = 0;
+// Artifact cache (ABI + contract name) with auto-reload by mtime
+let artifactCache = {
+  abi: [],
+  contractName: "Contract",
+  mtimeMs: 0,
+};
 
-function loadAbiFromArtifact() {
-  if (!config.FOUNDRY_ARTIFACT_PATH) return [];
+function loadArtifact() {
+  if (!config.FOUNDRY_ARTIFACT_PATH) return artifactCache;
 
-  const p = path.resolve(config.FOUNDRY_ARTIFACT_PATH);
-  abiCachePath = p;
+  const artifactPath = path.resolve(config.FOUNDRY_ARTIFACT_PATH);
+  if (!fs.existsSync(artifactPath)) return artifactCache;
 
-  if (!fs.existsSync(p)) {
-    // Don't spam logs; just return last cache (or empty)
-    return abiCache;
+  const stat = fs.statSync(artifactPath);
+  if (stat.mtimeMs === artifactCache.mtimeMs && artifactCache.abi.length) {
+    return artifactCache;
   }
 
-  const stat = fs.statSync(p);
-  if (stat.mtimeMs === abiCacheMtimeMs && abiCache.length) {
-    return abiCache; // unchanged
-  }
+  const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
 
-  // changed or first load
-  const artifact = JSON.parse(fs.readFileSync(p, "utf8"));
-  abiCache = artifact.abi || [];
-  abiCacheMtimeMs = stat.mtimeMs;
+  // Derive name from file: out/Counter.sol/Counter.json -> "Counter"
+  const derivedName = path.basename(artifactPath, ".json");
 
-  console.log("Loaded ABI from:", p, `(mtime=${new Date(stat.mtimeMs).toISOString()})`);
-  return abiCache;
+  artifactCache = {
+    abi: artifact.abi || [],
+    contractName: derivedName || "Contract",
+    mtimeMs: stat.mtimeMs,
+  };
+
+  console.log("Loaded artifact from:", artifactPath);
+  console.log("Contract name:", artifactCache.contractName);
+
+  return artifactCache;
 }
 
-// Provide a getter so tronService can always use the latest ABI
 function getDeployAbi() {
-  return loadAbiFromArtifact();
+  return loadArtifact().abi;
 }
 
-// Load once at startup (optional)
-loadAbiFromArtifact();
+function getContractName() {
+  return loadArtifact().contractName;
+}
 
-const upstreamService = makeUpstreamService({ upstreamJsonRpcUrl: config.UPSTREAM_JSONRPC });
+// Initial load (optional)
+loadArtifact();
+
+const upstreamService = makeUpstreamService({
+  upstreamJsonRpcUrl: config.UPSTREAM_JSONRPC,
+});
 
 const tronService = makeTronService({
   tronNodeBase: config.TRON_NODE_BASE,
@@ -56,8 +66,8 @@ const tronService = makeTronService({
   feeLimitSun: config.FEE_LIMIT_SUN,
   originEnergyLimit: config.ORIGIN_ENERGY_LIMIT,
   userFeePercentage: config.USER_FEE_PERCENTAGE,
-  contractName: config.CONTRACT_NAME,
   getDeployAbi,
+  getContractName, 
 });
 
 console.log("Proxy signer (EVM 0x):", tronService.proxySignerEvm);
@@ -72,7 +82,4 @@ app.post("/", rpcRouter);
 app.listen(config.PORT, "127.0.0.1", () => {
   console.log(`tron-ethrpc-proxy listening on http://127.0.0.1:${config.PORT}`);
   console.log(`Forwarding reads to: ${config.UPSTREAM_JSONRPC}`);
-  if (config.FOUNDRY_ARTIFACT_PATH) {
-    console.log(`Watching ABI artifact path: ${path.resolve(config.FOUNDRY_ARTIFACT_PATH)}`);
-  }
 });

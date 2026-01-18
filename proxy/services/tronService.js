@@ -7,8 +7,8 @@ function makeTronService({
   feeLimitSun,
   originEnergyLimit,
   userFeePercentage,
-  contractName,
-  getDeployAbi, 
+  getDeployAbi,
+  getContractName,
 }) {
   const tronWeb = new TronWeb({
     fullHost: tronNodeBase,
@@ -26,6 +26,8 @@ function makeTronService({
 
   async function deployFromBytecode(bytecodeHexNo0x) {
     const abi = typeof getDeployAbi === "function" ? getDeployAbi() : [];
+    const name =
+      typeof getContractName === "function" ? getContractName() : "Contract";
 
     const unsigned = await tronWeb.transactionBuilder.createSmartContract(
       {
@@ -35,7 +37,7 @@ function makeTronService({
         callValue: 0,
         userFeePercentage,
         originEnergyLimit,
-        name: contractName,
+        name, // matches the artifact contract name
       },
       proxySignerBase58
     );
@@ -67,7 +69,12 @@ function makeTronService({
     return "0x";
   }
 
-  async function triggerSmartContract({ contractEvm0x, ownerEvm0x, dataHexNo0x, feeLimitSunOverride }) {
+  async function triggerSmartContract({
+    contractEvm0x,
+    ownerEvm0x,
+    dataHexNo0x,
+    feeLimitSunOverride,
+  }) {
     const contractHex41 = "41" + contractEvm0x.slice(2).toLowerCase();
     const ownerHex41 = "41" + ownerEvm0x.slice(2).toLowerCase();
 
