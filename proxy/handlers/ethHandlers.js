@@ -1,11 +1,36 @@
-import { ethers } from "ethers";
-import { findArtifacts } from "../utils/artifactPath.js"
-import { toQuantityHex } from "../utils/hex.js";
-import 'dotenv/config'
+const ethersPkg = require("ethers");
+const ethers = ethersPkg.ethers ?? ethersPkg;
 
+const { toQuantityHex } = require("../utils/hex");
 
-export function makeEthHandlers({ store, tronService, upstreamService, setFoundryArtifactPath }) {
+require("dotenv").config();
+
+/**
+ * Loads findArtifacts from ../utils/artifactPath.js.
+ * - If artifactPath.js is CommonJS: require() works.
+ * - If artifactPath.js is ESM: we fall back to dynamic import().
+ */
+let _findArtifactsFn = null;
+async function getFindArtifacts() {
+  if (_findArtifactsFn) return _findArtifactsFn;
+
+  try {
+    // CommonJS path
+    // eslint-disable-next-line global-require
+    const mod = require("../utils/artifactPath.js");
+    _findArtifactsFn = mod.findArtifacts;
+    return _findArtifactsFn;
+  } catch (_) {
+    // ESM path
+    const mod = await import("../utils/artifactPath.js");
+    _findArtifactsFn = mod.findArtifacts;
+    return _findArtifactsFn;
+  }
+}
+
+function makeEthHandlers({ store, tronService, upstreamService, setFoundryArtifactPath }) {
   const { proxySignerEvm, tronWeb } = tronService;
+
   async function eth_getTransactionCount(params) {
     const addr = (params?.[0] || "").toLowerCase();
     return toQuantityHex(store.getNextNonce(addr));
@@ -34,8 +59,7 @@ export function makeEthHandlers({ store, tronService, upstreamService, setFoundr
     }
 
     if (t.startsWith("uint") || t.startsWith("int")) {
-      if (typeof value === "bigint") return value.toString();
-      return String(value);
+      return typeof value === "bigint" ? value.toString() : String(value);
     }
 
     if (t === "string") return String(value);
@@ -62,31 +86,32 @@ export function makeEthHandlers({ store, tronService, upstreamService, setFoundr
   }
 
   async function eth_sendRawTransaction(params) {
-    // console.log("RLP Encoded txn:");
-    // console.log(params);
-    //***Foundry workflow to automatically look for artifact, we might need to make this optional for future general use cases ***
-    const FOUNDRY_WORKFLOW = true;  // Eventually we can get this from an envVar
-    if (FOUNDRY_WORKFLOW == true) {
+    // Foundry workflow: automatically search for artifact match and update proxy artifact path.
+    const FOUNDRY_WORKFLOW = true;
+
+    if (FOUNDRY_WORKFLOW === true) {
       const artifactsFolder = process.env.FOUNDRY_ARTIFACT_PATH;
-      // Decode RLP 
+
+      // Decode RLP and extract the "data"/initcode field for matching.
       const decodedRLP = ethers.decodeRlp(params[0]);
-      // Get bytecode from RLP arrray
       const byteCodeToMatch = decodedRLP[5];
-      console.log("Looking for an artifact match... ");
-      // Search artifacts matching our decoded bytecode to get the artifact path
+
+      const findArtifacts = await getFindArtifacts();
+
+      console.log("Looking for an artifact match...");
       const matches = await findArtifacts(artifactsFolder, byteCodeToMatch);
-      if (matches.length === 0) {
+
+      if (!matches || matches.length === 0) {
         console.log(`No artifacts found containing "${byteCodeToMatch}"`);
       } else {
-        console.log(`Found in!`);
-      }
-      //Get the first match only (theoretically should be only one)
-      const foundry_artifact = matches[0];
-      console.log(foundry_artifact);
-      if (typeof setFoundryArtifactPath === "function") {
-        setFoundryArtifactPath(foundry_artifact);
-      }
+        console.log("Found in!");
+        const foundryArtifact = matches[0];
+        console.log(foundryArtifact);
 
+        if (typeof setFoundryArtifactPath === "function") {
+          setFoundryArtifactPath(foundryArtifact);
+        }
+      }
     }
 
     const rawTxHex = params?.[0];
@@ -102,7 +127,9 @@ export function makeEthHandlers({ store, tronService, upstreamService, setFoundr
     const senderLower = tx.from.toLowerCase();
 
     if (proxySignerEvm && senderLower !== proxySignerEvm.toLowerCase()) {
-      throw new Error(`Sender mismatch. RawTx sender=${senderLower} but proxy key maps to ${proxySignerEvm}.`);
+      throw new Error(
+        `Sender mismatch. RawTx sender=${senderLower} but proxy key maps to ${proxySignerEvm}.`
+      );
     }
 
     store.bumpNonce(senderLower, BigInt(tx.nonce ?? 0));
@@ -126,7 +153,7 @@ export function makeEthHandlers({ store, tronService, upstreamService, setFoundr
       if (!creationNo0x || !fullNo0x.startsWith(creationNo0x)) {
         throw new Error(
           "Cannot split constructor args from tx.data. " +
-          "Make sure FOUNDRY_ARTIFACT_PATH points to the correct contract artifact and that the contract was recompiled."
+            "Make sure FOUNDRY_ARTIFACT_PATH points to the correct contract artifact and that the contract was recompiled."
         );
       }
 
@@ -168,9 +195,34 @@ export function makeEthHandlers({ store, tronService, upstreamService, setFoundr
 
   async function eth_getCode(params) {
     const addr = params?.[0];
-    const tag = params?.[1] ?? "latest";
+    const tag = normalizeBlockTag(params?.[1]);
     const forwarded = await upstreamService.forward("eth_getCode", [addr, tag], 1);
     return forwarded?.result ?? "0x";
+  }
+
+  function normalizeBlockTag(tag) {
+    if (tag == null) return "latest";
+    if (typeof tag === "string") {
+      if (tag === "latest" || tag === "earliest" || tag === "pending") return tag;
+      if (tag.startsWith("0x")) return "latest";
+      return "latest";
+    }
+    return "latest";
+  }
+
+  async function eth_getBalance(params) {
+    const addr = params?.[0];
+    const tag = normalizeBlockTag(params?.[1]);
+    const forwarded = await upstreamService.forward("eth_getBalance", [addr, tag], 1);
+    return forwarded?.result ?? "0x0";
+  }
+
+  async function eth_getStorageAt(params) {
+    const addr = params?.[0];
+    const slot = params?.[1];
+    const tag = normalizeBlockTag(params?.[2]);
+    const forwarded = await upstreamService.forward("eth_getStorageAt", [addr, slot, tag], 1);
+    return forwarded?.result ?? "0x0";
   }
 
   async function eth_getTransactionByHash(params) {
@@ -184,9 +236,12 @@ export function makeEthHandlers({ store, tronService, upstreamService, setFoundr
     eth_estimateGas,
     eth_gasPrice,
     eth_sendRawTransaction,
+    eth_getBalance,
+    eth_getStorageAt,
     eth_getTransactionReceipt,
     eth_getCode,
     eth_getTransactionByHash,
   };
 }
 
+module.exports = { makeEthHandlers };

@@ -10,13 +10,15 @@ eth_rpc_url = "http://127.0.0.1:8545"
 
 [profile.test]
 # Use standard solc for tests
-solc_version = "0.8.25"
+solc_version = "0.8.23"
+evm_version = "paris"
 optimizer = true
 optimizer_runs = 200
 
 [profile.ci]
 # Use standard solc for tests
-solc_version = "0.8.25"
+solc_version = "0.8.23"
+evm_version = "paris"
 optimizer = true
 optimizer_runs = 200
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

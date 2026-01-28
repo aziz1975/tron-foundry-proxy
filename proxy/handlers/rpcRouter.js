@@ -27,6 +27,12 @@ function makeRpcRouter({ ethHandlers, upstreamService }) {
       if (method === "eth_getCode") {
         return res.json(rpcResult(id, await ethHandlers.eth_getCode(params)));
       }
+      if (method === "eth_getBalance") {
+        return res.json(rpcResult(id, await ethHandlers.eth_getBalance(params)));
+      }
+      if (method === "eth_getStorageAt") {
+        return res.json(rpcResult(id, await ethHandlers.eth_getStorageAt(params)));
+      }
       if (method === "eth_getTransactionByHash") {
         return res.json(rpcResult(id, await ethHandlers.eth_getTransactionByHash(params)));
       }

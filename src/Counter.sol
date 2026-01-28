@@ -9,7 +9,7 @@ contract Counter {
     }
 
     function increment() external {
-        number = number++;
+        number += 1;
     }
 
     // new function to decrement the counter

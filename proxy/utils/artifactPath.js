@@ -1,5 +1,5 @@
-import fs from "fs/promises";
-import path from "path";
+const fs = require("fs/promises");
+const path = require("path");
 
 
 function stripSolcArgs(hex) {
@@ -12,7 +12,7 @@ function stripSolcArgs(hex) {
  * @param {string} searchString - String to look for
  * @returns {Promise<string[]>} - Array of file paths containing the string
  */
-export async function findArtifacts(dir, searchString) {
+async function findArtifacts(dir, searchString) {
     let results = [];
 
     const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -39,3 +39,4 @@ export async function findArtifacts(dir, searchString) {
     return results;
 }
 
+module.exports = { findArtifacts };

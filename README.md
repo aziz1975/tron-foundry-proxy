@@ -143,7 +143,7 @@ Open a separate terminal window and keep the ethjsonrpc-tron proxy running:
 
 ## Create a Keystore
 
-We’ll use a keystore encrypted with a password for enhanced security.
+We can use a keystore encrypted with a password for enhanced security.
 
 `cast wallet import yourKeyName --private-key 0xYOUR_PRIVATE_KEY`
 
@@ -159,7 +159,7 @@ forge build
 ### Counter (no constructor args)
 
 ```bash
-forge create src/Counter.sol:Counter --keystore ~/.foundry/keystores/YOUR-KEYSTORE --legacy --broadcast -vvvv
+forge create src/Counter.sol:Counter --keystore ~/.foundry/keystores/yourKeyName --legacy --broadcast -vvvv
 ```
 
 After deployment, Forge prints output similar to this:
@@ -175,7 +175,7 @@ To check the transaction on Tronscan, copy the **Transaction hash**, remove the 
 ### Greeter (constructor string)
 
 ```bash
-forge create src/Greeter.sol:Greeter --keystore ~/.foundry/keystores/YOUR-KEYSTORE --legacy --broadcast --constructor-args "Hello World" -vvvv
+forge create src/Greeter.sol:Greeter --keystore ~/.foundry/keystores/yourKeyName --legacy --broadcast --constructor-args "Hello World" -vvvv
 ```
 
 ### OZCounter (imports OpenZeppelin, constructor address)
@@ -183,13 +183,13 @@ forge create src/Greeter.sol:Greeter --keystore ~/.foundry/keystores/YOUR-KEYSTO
 Optional: Generate `DEPLOYER_ADDRESS` (owner) in .env file:
 
 ```bash
-echo "DEPLOYER_ADDRESS=$(cast wallet address --keystore ~/.foundry/keystores/YOUR-KEYSTORE)" >> .env
+echo "DEPLOYER_ADDRESS=$(cast wallet address --keystore ~/.foundry/keystores/yourKeyName)" >> .env
 ```
 
 Deploy:
 
 ```bash
-forge create src/OZCounter.sol:OZCounter --keystore ~/.foundry/keystores/YOUR-KEYSTORE --legacy --broadcast --constructor-args "$DEPLOYER_ADDRESS_IN_HEX" -vvvv
+forge create src/OZCounter.sol:OZCounter --keystore ~/.foundry/keystores/yourKeyName --legacy --broadcast --constructor-args "$DEPLOYER_ADDRESS_IN_HEX" -vvvv
 ```
 
 ---
@@ -266,21 +266,21 @@ forge build
 ### Deploy Counter
 
 ```bash
-forge create src/Counter.sol:Counter --keystore ~/.foundry/keystores/YOUR-KEYSTORE --legacy --broadcast -vvvv
+forge create src/Counter.sol:Counter --keystore ~/.foundry/keystores/yourKeyName --legacy --broadcast -vvvv
 
 ```
 
 ### Deploy Greeter with constructor args
 
 ```bash
-forge create src/Greeter.sol:Greeter --keystore ~/.foundry/keystores/YOUR-KEYSTORE --legacy --broadcast --constructor-args "Hello World" -vvvv
+forge create src/Greeter.sol:Greeter --keystore ~/.foundry/keystores/yourKeyName --legacy --broadcast --constructor-args "Hello World" -vvvv
 
 ```
 
 ### Deploy OZCounter with constructor args
 
 ```bash
-forge create src/OZCounter.sol:OZCounter --keystore ~/.foundry/keystores/YOUR-KEYSTORE --legacy --broadcast --constructor-args "$DEPLOYER_ADDRESS_IN_HEX" -vvvv
+forge create src/OZCounter.sol:OZCounter --keystore ~/.foundry/keystores/yourKeyName --legacy --broadcast --constructor-args "$DEPLOYER_ADDRESS_IN_HEX" -vvvv
 
 ```
 
@@ -293,7 +293,7 @@ forge install --no-git OpenZeppelin/openzeppelin-contracts@v5.5.0
 ### Generate deployer address for OZCounter
 
 ```bash
-echo "DEPLOYER_ADDRESS=$(cast wallet address --keystore ~/.foundry/keystores/YOUR-KEYSTORE)" >> .env
+echo "DEPLOYER_ADDRESS=$(cast wallet address --keystore ~/.foundry/keystores/yourKeyName)" >> .env
 ```
 
 ### Run tests with standard solc
