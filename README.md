@@ -238,7 +238,7 @@ FOUNDRY_PROFILE="test" forge test --debug   --match-contract "CounterTest"   --m
 
 ## CI (GitHub Actions)
 
-The workflow installs OpenZeppelin and runs build/test using profile `ci` (standard solc). See `.github/workflows/test.yml`.
+Currently, the GitHub Actions workflow is disabled. If you enable it, the workflow will install OpenZeppelin and run the build/test using profile `ci` (standard solc). See `.github/workflows/test.yml`.
 
 ---
 
