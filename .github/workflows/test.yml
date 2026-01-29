@@ -19,6 +19,14 @@ jobs:
         with:
           version: stable
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install proxy deps
+        run: npm ci
+
       - name: Install dependencies (OpenZeppelin)
         run: |
           # Install OpenZeppelin into lib/ so imports like
@@ -29,12 +37,24 @@ jobs:
           ls -la lib || true
           ls -la lib/openzeppelin-contracts/contracts/access/Ownable.sol
 
+      - name: Start local TRON JSON-RPC proxy
+        env:
+          PORT: 8545
+          TRON_BASE_ENDPOINT: ${{ secrets.TRON_BASE_ENDPOINT }}
+          TRON_PRIVATE_KEY: ${{ secrets.TRON_PRIVATE_KEY }}
+          TRON_PRO_API_KEY: ${{ secrets.TRON_PRO_API_KEY }}
+        run: |
+          node proxy/index.js > proxy.log 2>&1 &
+          for i in {1..20}; do nc -z 127.0.0.1 8545 && break; sleep 0.5; done
+
       - name: Build (CI profile)
         env:
           FOUNDRY_PROFILE: ci
+          FOUNDRY_ETH_RPC_URL: http://127.0.0.1:8545
         run: forge build -vvv
 
       - name: Test (CI profile)
         env:
           FOUNDRY_PROFILE: ci
+          FOUNDRY_ETH_RPC_URL: http://127.0.0.1:8545
         run: forge test -vvv
